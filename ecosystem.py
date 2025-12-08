@@ -3,16 +3,33 @@ import population as pop
 import environment as env
 
 class Ecosystem(pop.Population, env.FlucEnvironment):
-    def __init__(self, pop_size, init_state, ua, da, ux, dx, switch_time, switch_drift, seed, use_test_strategy, ds0, apply_ds0_all):
+    def __init__(self, pop_size, init_state, ua, da, ux, dx, switch_time, switch_drift, seed, use_test_strategy, ds0, apply_ds0_all, two_tau):
         pop.Population.__init__(self, ua, da, ux, dx)
         env.FlucEnvironment.__init__(self, pop_size, init_state, switch_time, switch_drift)
         self.t = 0
         self.rnd = np.random.default_rng(seed)
+        self.two_tau = two_tau
+
         
         if self.d_tau > 0:
             self.next_switch = self.rnd.gamma((self.tau/self.d_tau)**2, self.d_tau**2/self.tau)
             self.next_switch2 = self.next_switch + self.rnd.gamma((self.tau/self.d_tau)**2, self.d_tau**2/self.tau)
             self.next_switch3 = self.next_switch2 + self.rnd.gamma((self.tau/self.d_tau)**2, self.d_tau**2/self.tau)
+        elif self.two_tau is not None:
+            if self.rnd.uniform(0, 1) > self.two_tau[0]:
+                self.next_switch = self.tau
+            else:
+                self.next_switch = self.two_tau[1]
+
+            if self.rnd.uniform(0, 1) > self.two_tau[0]:
+                self.next_switch2 = self.next_switch + self.tau
+            else:
+                self.next_switch2 = self.next_switch + self.two_tau[1]
+
+            if self.rnd.uniform(0, 1) > self.two_tau[0]:
+                self.next_switch3 = self.next_switch2 + self.tau
+            else:
+                self.next_switch3 = self.next_switch2 + self.two_tau[1]
         else:
             self.next_switch = self.tau
             self.next_switch2 = 2*self.tau
@@ -37,6 +54,11 @@ class Ecosystem(pop.Population, env.FlucEnvironment):
         self.ds0 = ds0
         self.apply_ds0_all = apply_ds0_all
         self.use_test_strategy = use_test_strategy
+        self.bias_num = np.zeros(int(2*self.tau))
+        self.bias_den = np.zeros(int(2*self.tau))
+        self.bias_spread = np.zeros(int(2*self.tau))
+        self.curr_bias_offset = (0,0)
+        self.fitness_dist = np.zeros((int(2*self.tau),40,40))
 
     def populate(self):
         self.matrix[0][0][0][0] = self.N
@@ -244,10 +266,38 @@ class Ecosystem(pop.Population, env.FlucEnvironment):
             self.next_switch2 = self.next_switch3
             if self.d_tau > 0:
                 self.next_switch3 += self.rnd.gamma((self.tau/self.d_tau)**2, self.d_tau**2/self.tau)
+            elif self.two_tau is not None:
+                if self.rnd.uniform(0, 1) > self.two_tau[0]:
+                    self.next_switch3 += self.tau
+                else:
+                    self.next_switch3 += self.two_tau[1]
             else:
                 self.next_switch3 += self.tau
-            
+        
+    def update_bias(self):
+        k = int(np.mod(self.t, 2*self.tau))
+        mat = np.sum(self.matrix,axis=3)
+        bias_mat = (np.arange(mat.shape[1]).reshape(1,-1,1)+self.offset[1]) - (np.arange(mat.shape[2]).reshape(1,1,-1)+self.offset[2])
+        bias = np.sum(mat*bias_mat)/np.sum(mat)
+        bias_std = np.sqrt(np.sum(mat*(bias_mat-bias)**2)/np.sum(mat))
+        self.bias_spread[k] += bias_std
+
+        tot_mat = np.arange(mat.shape[0]).reshape(-1,1,1) + np.arange(mat.shape[1]).reshape(1,-1,1) + np.arange(mat.shape[2]).reshape(1,1,-1)
+        bias_mat = 0*np.arange(mat.shape[0]).reshape(-1,1,1) + np.arange(mat.shape[1]).reshape(1,-1,1) - np.arange(mat.shape[2]).reshape(1,1,-1)
+
+        tot_mat = tot_mat - np.sum(mat*tot_mat)/np.sum(mat)
+        bias_mat = bias_mat - np.sum(mat*bias_mat)/np.sum(mat)
+
+        self.fitness_dist[k,:,:] += np.histogram2d(tot_mat.flatten(), bias_mat.flatten(), bins = [np.arange(-10,10.5,0.5), np.arange(-10,10.5,0.5)], density = True, weights=mat.flatten())[0]
+
+        if k > 0:
+            self.bias_num[k] += bias - self.curr_bias_offset
+        else:
+            self.curr_bias_offset = bias
+        self.bias_den[k] += 1
+
     def full_step(self, purge_and_update=True):
+        if self.d_tau == 0 and self.t > 100 and self.t >= 2*self.tau: self.update_bias()
         self.selection_step()
         self.mutate_x_step()
 

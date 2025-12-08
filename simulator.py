@@ -10,8 +10,8 @@ class Simulation(ec.Ecosystem):
     as well as objects that contain a record of mutation, strategy frequencies.
     """
 
-    def __init__(self, pop_size, init_state, ua, da, ux, dx, switch_time, switch_drift, seed, use_test_strategy, minimal_output, ds0, apply_ds0_all):
-        ec.Ecosystem.__init__(self, pop_size, init_state, ua, da, ux, dx, switch_time, switch_drift, seed, use_test_strategy, ds0, apply_ds0_all)
+    def __init__(self, pop_size, init_state, ua, da, ux, dx, switch_time, switch_drift, seed, use_test_strategy, minimal_output, ds0, apply_ds0_all, two_tau):
+        ec.Ecosystem.__init__(self, pop_size, init_state, ua, da, ux, dx, switch_time, switch_drift, seed, use_test_strategy, ds0, apply_ds0_all, two_tau)
         self.times = []
         self.offsets = []
         self.states = []
@@ -49,7 +49,15 @@ class Simulation(ec.Ecosystem):
             'final_states': self.final_states,
             'final_offsets': self.final_offsets,
             'rate_gen': self.rate_gen,
-            'rate_spec': self.rate_spec
+            'rate_spec': self.rate_spec,
+            'backgrounds': self.backgrounds,
+            'mean_backgrounds': self.mean_backgrounds,
+            'mut_types': self.mut_types,
+            'mean_bg_diff': self.mean_bg_diff,
+            'bias_num': self.bias_num,
+            'bias_spread': self.bias_spread,
+            'bias_den': self.bias_den,
+            'fitness_dist': self.fitness_dist 
         }
 
         self.minimal_sim_results = {
@@ -61,6 +69,7 @@ class Simulation(ec.Ecosystem):
 
     def record(self, final_flag = False):
         self.times.append(self.t)
+        if np.mod(self.t, 10000) == 0: print(self.t)
         if len(self.offsets) > 1:
             if self.offsets[-2][0] < self.offsets[-1][0]:
                 pass
@@ -85,6 +94,7 @@ class Simulation(ec.Ecosystem):
 
     def evolve(self, steps, steps_per_record, print_time=True, purge_and_update=True):
         t0 = time.time()
+
         for i in range(1, steps + 1):
             self.full_step(purge_and_update=purge_and_update)
             if i % steps_per_record == 0:
