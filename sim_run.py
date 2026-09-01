@@ -14,8 +14,9 @@ def wf_sim(sg, ss, ug, us, N, period, period_CV, rand_seed, run_time, use_test_s
     period_CV: strength of seasonal drift = sigma_tau / (tau * sqrt(2))
     ds0: shift in specialist mean fitness, so specialist sbar = sg + ds0
     apply_ds0_all: if True, applies ds0 to all specialists; if False, applies ds0 only to test lineages
+    two_tau: (p, T). Alternate stochasticity mode: each state time is T with probability p, else period/2.
     use_test_strategy: Flag to add test lineage to calculate more detailed fixation statistics, when us > 0
-    two_tau: Alternate stochasticity mode
+    
     minimal_output: pickle the reduced results dict instead of the full one.
     measure_dist: accumulate the 2D mutation-count/bias histogram. Only active when period_CV == 0.
     """
