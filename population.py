@@ -1,14 +1,12 @@
 import numpy as np
 
 class PopulationMatrix:
-    """
-    Contains a numpy array whose rows represent different strategies or strategy-lineages,
-    and whose columns represent different (discrete) fitnesses (i.e. number of mutations).
-    Also contains methods to calculate sums and averages along different axes.
+    """ Contains a numpy array representing the population.
     """
 
-    def __init__(self, test_lineage = False):
-        # Cols: Pure  beneficial, more specialist, less specialist, favored env
+    def __init__(self):
+        # Axes 0-2: number of generalist muts, specialist muts favoring state +1,
+        # specialist muts favoring state -1. Axis 3: lineage (0 = resident, 1 = tagged test mutant).
         self.matrix = np.zeros((1,1,1,2), dtype=float)
         self.offset = [0,0,0]  # Min number of muts in each category
         
@@ -28,18 +26,18 @@ class PopulationMatrix:
 class EcoEvoParameters:
     """Contains mutation rate and size parameters
     """
-    def __init__(self, ua, da, ux, dx):
-        self.ua = ua
-        self.da = da
-        self.ux = ux
-        self.dx = dx
+    def __init__(self, sg, ss, ug, us):
+        self.sg = sg
+        self.ss = ss
+        self.ug = ug
+        self.us = us
 
 class Population(PopulationMatrix, EcoEvoParameters):
     """ Population contains all the objects related to the organisms in an ecosystem.
     """
-    def __init__(self, ua, da, ux, dx):
+    def __init__(self, sg, ss, ug, us):
         PopulationMatrix.__init__(self)
-        EcoEvoParameters.__init__(self, ua, da, ux, dx)
+        EcoEvoParameters.__init__(self, sg, ss, ug, us)
 
     def purge_and_update(self):
         self.purge()

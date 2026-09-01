@@ -3,18 +3,19 @@ import population as pop
 import environment as env
 
 class Ecosystem(pop.Population, env.FlucEnvironment):
-    def __init__(self, pop_size, init_state, ua, da, ux, dx, switch_time, switch_drift, seed, use_test_strategy, ds0, apply_ds0_all, two_tau):
-        pop.Population.__init__(self, ua, da, ux, dx)
-        env.FlucEnvironment.__init__(self, pop_size, init_state, switch_time, switch_drift)
+    def __init__(self, pop_size, init_state, sg, ss, ug, us, tau, sigma_tau, seed, use_test_strategy, ds0, apply_ds0_all, two_tau, measure_dist):
+        pop.Population.__init__(self, sg, ss, ug, us)
+        env.FlucEnvironment.__init__(self, pop_size, init_state, tau, sigma_tau)
         self.t = 0
         self.rnd = np.random.default_rng(seed)
         self.two_tau = two_tau
+        self.measure_dist = measure_dist
 
         
-        if self.d_tau > 0:
-            self.next_switch = self.rnd.gamma((self.tau/self.d_tau)**2, self.d_tau**2/self.tau)
-            self.next_switch2 = self.next_switch + self.rnd.gamma((self.tau/self.d_tau)**2, self.d_tau**2/self.tau)
-            self.next_switch3 = self.next_switch2 + self.rnd.gamma((self.tau/self.d_tau)**2, self.d_tau**2/self.tau)
+        if self.sigma_tau > 0:
+            self.next_switch = self.rnd.gamma((self.tau/self.sigma_tau)**2, self.sigma_tau**2/self.tau)
+            self.next_switch2 = self.next_switch + self.rnd.gamma((self.tau/self.sigma_tau)**2, self.sigma_tau**2/self.tau)
+            self.next_switch3 = self.next_switch2 + self.rnd.gamma((self.tau/self.sigma_tau)**2, self.sigma_tau**2/self.tau)
         elif self.two_tau is not None:
             if self.rnd.uniform(0, 1) > self.two_tau[0]:
                 self.next_switch = self.tau
@@ -41,9 +42,6 @@ class Ecosystem(pop.Population, env.FlucEnvironment):
         self.fixations = []
         self.fixation_times = []
         self.fixation_starts = []
-        self.fixation_k = []
-        self.k_mode = []
-        self.k_max = []
         self.extra_waiting_time = 0
         self.death_flag = False
         self.backgrounds = []
@@ -57,8 +55,11 @@ class Ecosystem(pop.Population, env.FlucEnvironment):
         self.bias_num = np.zeros(int(2*self.tau))
         self.bias_den = np.zeros(int(2*self.tau))
         self.bias_spread = np.zeros(int(2*self.tau))
-        self.curr_bias_offset = (0,0)
+        self.curr_bias_offset = 0.0
         self.fitness_dist = np.zeros((int(2*self.tau),40,40))
+
+        self.epoch_lengths = []
+        self.bias_epoch_starts = []
 
     def populate(self):
         self.matrix[0][0][0][0] = self.N
@@ -68,18 +69,18 @@ class Ecosystem(pop.Population, env.FlucEnvironment):
         to be used when drawing new population sizes in selection step.'''
         current_pop = self.matrix.sum()
 
-        base_fitness = self.dx * (np.arange(self.matrix.shape[0]).reshape(-1,1,1,1) + np.arange(self.matrix.shape[1]).reshape(1,-1,1,1) + np.arange(self.matrix.shape[2]).reshape(1,1,-1,1))
+        base_fitness = self.sg * (np.arange(self.matrix.shape[0]).reshape(-1,1,1,1) + np.arange(self.matrix.shape[1]).reshape(1,-1,1,1) + np.arange(self.matrix.shape[2]).reshape(1,1,-1,1))
 
         if self.ds0 != 0:
             if self.apply_ds0_all:
-                base_fitness += self.ds0 * (np.arange(self.matrix.shape[1]).reshape(1,-1,1,1) + np.arange(self.matrix.shape[2]).reshape(1,1,-1,1))
+                base_fitness = base_fitness + self.ds0 * (np.arange(self.matrix.shape[1]).reshape(1,-1,1,1) + np.arange(self.matrix.shape[2]).reshape(1,1,-1,1))
             else:
-                base_fitness += self.ds0 * np.arange(self.matrix.shape[3]).reshape(1,1,1,-1)
+                base_fitness = base_fitness + self.ds0 * np.arange(self.matrix.shape[3]).reshape(1,1,1,-1)
         exp_fits = self.matrix/current_pop * np.exp(base_fitness)
 
         env_bias = np.arange(self.matrix.shape[1]).reshape(1,-1,1,1) - np.arange(self.matrix.shape[2]).reshape(1,1,-1,1)
 
-        lambdas = np.exp(self.state * self.da * env_bias) * exp_fits
+        lambdas = np.exp(self.state * self.ss * env_bias) * exp_fits
         return lambdas[self.matrix > 0] * self.N / lambdas.sum()
 
     def selection_step(self):
@@ -117,8 +118,7 @@ class Ecosystem(pop.Population, env.FlucEnvironment):
             self.matrix = np.concatenate((self.matrix, np.zeros((extend, self.matrix.shape[1], self.matrix.shape[2], 2), dtype=int)),axis=0)
         nonzero_indices = self.matrix > 0
         rolled_nonzero_indices = np.roll(nonzero_indices, 1, axis=0)
-        x_mutants = self.safe_binomial(self.matrix[nonzero_indices], self.ux)
-        # x_mutants = self.rnd.poisson(self.matrix[nonzero_indices] * self.ux)
+        x_mutants = self.safe_binomial(self.matrix[nonzero_indices], self.ug)
         if np.any(x_mutants):
             self.matrix[nonzero_indices] -= x_mutants
             self.matrix[rolled_nonzero_indices] += x_mutants
@@ -152,22 +152,23 @@ class Ecosystem(pop.Population, env.FlucEnvironment):
                 q_max = np.max(nonzero_indices[0])
                 q_mut = self.rnd.integers(q_min,q_max+1)
                 
-                starting_N = np.max((1/(2*(self.da + (1+q_mut)*self.dx)),1))
+                starting_N = np.max((1/(2*(self.ss + (1+q_mut)*self.sg)),1))
 
                 self.pfix_adjustments.append((q_max+1-q_min)*self.matrix[q_mut,0,0,0]/(starting_N*self.matrix.sum()))
                 self.matrix[q_mut][1][0][0] += starting_N
                 self.fixations.append(0)
                 self.next_mut = 0
                 self.fixation_times.append(self.t)
-                self.fixation_k.append(q_mut)
-                if self.state == 1:
-                    self.fixation_starts.append(self.t)
-                else:
-                    self.fixation_starts.append(self.t)
-                self.k_mode.append(q_min)
-                self.k_max.append(q_max)
+                self.fixation_starts.append(self.t)
 
     def add_test_strategy_mut(self):
+        if np.any(self.matrix[-1,:,:,:]):
+            self.matrix = np.concatenate((self.matrix, np.zeros((1, self.matrix.shape[1], self.matrix.shape[2],2),dtype=float)),axis=0)
+        if np.any(self.matrix[:,-1,:,:]):
+            self.matrix = np.concatenate((self.matrix, np.zeros((self.matrix.shape[0], 1, self.matrix.shape[2],2),dtype=float)),axis=1)
+        if np.any(self.matrix[:,:,-1,:]):
+            self.matrix = np.concatenate((self.matrix, np.zeros((self.matrix.shape[0], self.matrix.shape[1], 1, 2), dtype=float)),axis=2)
+
         nonzero_indices = np.where(self.matrix > 0)
 
         # If test charge lineage has fixed, record
@@ -210,10 +211,10 @@ class Ecosystem(pop.Population, env.FlucEnvironment):
                             n_categories += self.matrix[i,j,k,0] > 0
                 
                 mut_type = self.rnd.integers(-1, 2)
-                starting_N = np.max((1/(2*(1+q1_mut+q2_mut+q3_mut)*(self.dx+self.da)),1))
+                starting_N = np.max((1/(2*(1+q1_mut+q2_mut+q3_mut)*(self.sg+self.ss)),1))
 
                 self.pfix_adjustments.append(n_categories*self.matrix[q1_mut,q2_mut,q3_mut,0]/(starting_N*self.matrix.sum()))
-                while mut_type == 0 and self.ds0 > 0 and not self.apply_ds0_all: mut_type = self.rnd.integers(-1,2)
+                while mut_type == 0 and self.ds0 != 0 and not self.apply_ds0_all: mut_type = self.rnd.integers(-1,2)
 
 
                 if mut_type == 0:
@@ -223,7 +224,7 @@ class Ecosystem(pop.Population, env.FlucEnvironment):
                 else:
                     self.matrix[q1_mut][q2_mut][q3_mut+1][1] += starting_N
 
-                self.backgrounds.append((q1_mut,q2_mut,q3_mut))
+                self.backgrounds.append((q1_mut+self.offset[0],q2_mut+self.offset[1],q3_mut+self.offset[2]))
                 self.mut_types.append(mut_type)
 
                 freq1 = ((np.arange(self.matrix.shape[0]).reshape(-1,1,1)+self.offset[0])*self.matrix[:,:,:,0]).sum()/self.matrix[:,:,:,0].sum()
@@ -238,6 +239,7 @@ class Ecosystem(pop.Population, env.FlucEnvironment):
                 self.fixations.append(0)
                 self.next_mut = 0
                 self.fixation_times.append(self.t)
+                self.fixation_starts.append(self.t)
 
     def mutate_strategy_step(self, extend=1):
         if np.any(self.matrix[:,-1,:,:]):
@@ -248,7 +250,7 @@ class Ecosystem(pop.Population, env.FlucEnvironment):
         nonzero_indices = self.matrix > 0
         rolled_up_indices = np.roll(nonzero_indices, 1, axis=1)
         rolled_down_indices = np.roll(nonzero_indices, 1, axis=2)
-        up_muts = self.safe_binomial(self.matrix[nonzero_indices], self.ua)
+        up_muts = self.safe_binomial(self.matrix[nonzero_indices], self.us)
         down_muts = self.safe_binomial(up_muts, 0.5)
         up_muts = up_muts - down_muts
                 
@@ -264,8 +266,16 @@ class Ecosystem(pop.Population, env.FlucEnvironment):
             self.state *= -1
             self.next_switch = self.next_switch2
             self.next_switch2 = self.next_switch3
-            if self.d_tau > 0:
-                self.next_switch3 += self.rnd.gamma((self.tau/self.d_tau)**2, self.d_tau**2/self.tau)
+            if self.sigma_tau > 0:
+                self.next_switch3 += self.rnd.gamma((self.tau/self.sigma_tau)**2, self.sigma_tau**2/self.tau)
+
+                self.epoch_lengths.append(self.next_switch - self.t)
+                mat = np.sum(self.matrix, axis = 3)
+                bias_mat = (np.arange(mat.shape[1]).reshape(1,-1,1)+self.offset[1]) - (np.arange(mat.shape[2]).reshape(1,1,-1)+self.offset[2])
+                bias = np.sum(mat*bias_mat)/np.sum(mat)
+                self.bias_epoch_starts.append(bias)
+                
+                
             elif self.two_tau is not None:
                 if self.rnd.uniform(0, 1) > self.two_tau[0]:
                     self.next_switch3 += self.tau
@@ -288,7 +298,8 @@ class Ecosystem(pop.Population, env.FlucEnvironment):
         tot_mat = tot_mat - np.sum(mat*tot_mat)/np.sum(mat)
         bias_mat = bias_mat - np.sum(mat*bias_mat)/np.sum(mat)
 
-        self.fitness_dist[k,:,:] += np.histogram2d(tot_mat.flatten(), bias_mat.flatten(), bins = [np.arange(-10,10.5,0.5), np.arange(-10,10.5,0.5)], density = True, weights=mat.flatten())[0]
+        if self.measure_dist:
+            self.fitness_dist[k,:,:] += np.histogram2d(tot_mat.flatten(), bias_mat.flatten(), bins = [np.arange(-10,10.5,0.5), np.arange(-10,10.5,0.5)], density = True, weights=mat.flatten())[0]
 
         if k > 0:
             self.bias_num[k] += bias - self.curr_bias_offset
@@ -297,11 +308,11 @@ class Ecosystem(pop.Population, env.FlucEnvironment):
         self.bias_den[k] += 1
 
     def full_step(self, purge_and_update=True):
-        if self.d_tau == 0 and self.t > 100 and self.t >= 2*self.tau: self.update_bias()
+        if self.sigma_tau == 0 and self.t > 100 and self.t >= 200*self.tau: self.update_bias()
         self.selection_step()
         self.mutate_x_step()
 
-        if self.ua >= 0:
+        if self.us >= 0:
             self.mutate_strategy_step()
             if self.use_test_strategy: self.add_test_strategy_mut()
         else:
@@ -311,7 +322,7 @@ class Ecosystem(pop.Population, env.FlucEnvironment):
         if purge_and_update:
             offset_old = self.offset[1] + self.offset[2]
             self.purge_and_update()
-            if self.ua < 0:
+            if self.us < 0:
                 if self.offset[1] + self.offset[2] > offset_old:
                     self.fixations[-1] = 1
         
