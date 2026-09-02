@@ -1,2 +1,20 @@
 # Fluctuating_Environments
-Rapid evolution in a fluctuating environment
+Code supplement for "Rapid evolution can select for fitness tradeoffs in fluctuating environments."
+See data repository on Zenodo (doi:10.5281/zenodo.22236835) for precomputed simulation results.
+
+SIMULATION CALLER:
+sim_run.py
+Main code that runs simulated Wright-Fisher evolution in a fluctuating environment.
+
+SIMULATION HELPERS:
+simulator.py
+ecosystem.py
+environment.py
+population.py
+Helper classes invoked by sim_run. simulator.py specifies the output files and ecosystem.py specifies most of the evolutionary dynamics.
+
+FIGURE GENERATION CODE:
+
+Figure_Code_Main.ipynb
+Jupyter notebook which generates main text figures using precomputed simulation results on Zenodo.
+Required folders on Zenodo: Fig1-2_Data, Fig3Data, Highly_Sampled_Data, Fig4C-5Data, Fig6Data
