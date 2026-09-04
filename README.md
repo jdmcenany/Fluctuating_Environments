@@ -1,5 +1,5 @@
 # Fluctuating_Environments
-Code supplement for "Rapid evolution can select for fitness tradeoffs in fluctuating environments."
+Code supplement for "Rapid evolution can select for fitness tradeoffs in fluctuating environments" (doi.org/10.64898/2026.09.01.748641).
 See data repository on Zenodo (doi:10.5281/zenodo.22236835) for precomputed simulation results.
 
 SIMULATION CALLER:
