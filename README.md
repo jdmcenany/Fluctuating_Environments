@@ -16,6 +16,6 @@ population.py
   Helper classes invoked by sim_run. simulator.py specifies the output files and ecosystem.py specifies most of the evolutionary dynamics.
 
 FIGURE GENERATION CODE:
-Figure_Code_Main.ipynb
+Figure_Code_Main.ipynb, Figure_Code_SI.ipynb
 
 Jupyter notebook which generates main text figures using precomputed simulation results on Zenodo.
